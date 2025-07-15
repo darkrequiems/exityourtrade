@@ -1,0 +1,333 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  username  String   @unique
+  firstName String?
+  lastName  String?
+  avatar    String?
+  bio       String?
+  
+  // Authentication
+  password  String?
+  googleId  String?
+  appleId   String?
+  verified  Boolean  @default(false)
+  
+  // Preferences
+  notifications Json?
+  timezone      String @default("UTC")
+  
+  // Trading
+  tradingPlatforms Json? // Store API keys securely
+  riskProfile      RiskProfile @default(MODERATE)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  strategies     Strategy[]
+  watchlists     Watchlist[]
+  alerts         Alert[]
+  posts          Post[]
+  comments       Comment[]
+  likes          Like[]
+  follows        Follow[] @relation("UserFollows")
+  followers      Follow[] @relation("UserFollowers")
+  portfolios     Portfolio[]
+  notifications  Notification[]
+  
+  @@map("users")
+}
+
+model Strategy {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  type        StrategyType
+  status      StrategyStatus @default(ACTIVE)
+  
+  // Strategy parameters
+  tickers     String[]
+  timeframe   String        // 1m, 5m, 15m, 1h, 4h, 1d
+  entryRules  Json
+  exitRules   Json
+  riskMgmt    Json
+  
+  // Performance
+  totalTrades   Int     @default(0)
+  winRate       Float   @default(0)
+  totalReturn   Float   @default(0)
+  maxDrawdown   Float   @default(0)
+  sharpeRatio   Float   @default(0)
+  
+  // Settings
+  isPublic      Boolean @default(false)
+  isActive      Boolean @default(true)
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  trades    Trade[]
+  alerts    Alert[]
+  
+  @@map("strategies")
+}
+
+model Watchlist {
+  id       String   @id @default(cuid())
+  name     String
+  tickers  String[]
+  isPublic Boolean  @default(false)
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("watchlists")
+}
+
+model Alert {
+  id         String      @id @default(cuid())
+  ticker     String
+  condition  Json        // price, volume, technical indicator conditions
+  message    String
+  isActive   Boolean     @default(true)
+  triggered  Boolean     @default(false)
+  
+  // Notification preferences
+  email      Boolean     @default(true)
+  sms        Boolean     @default(false)
+  push       Boolean     @default(true)
+  
+  userId     String?
+  user       User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  strategyId String?
+  strategy   Strategy?   @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  triggeredAt DateTime?
+  
+  @@map("alerts")
+}
+
+model Trade {
+  id         String      @id @default(cuid())
+  ticker     String
+  side       TradeSide
+  quantity   Float
+  entryPrice Float
+  exitPrice  Float?
+  status     TradeStatus @default(OPEN)
+  
+  // Trade details
+  platform   String      // coinbase, alpaca, etc.
+  orderId    String?     // Platform order ID
+  notes      String?
+  
+  // Performance
+  pnl        Float?      // Profit/Loss
+  pnlPercent Float?      // P&L percentage
+  
+  strategyId String?
+  strategy   Strategy?   @relation(fields: [strategyId], references: [id], onDelete: SetNull)
+  
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  closedAt   DateTime?
+  
+  @@map("trades")
+}
+
+model Portfolio {
+  id       String @id @default(cuid())
+  name     String
+  balance  Float  @default(0)
+  currency String @default("USD")
+  
+  // Portfolio composition
+  holdings Json[] // { ticker, quantity, avgPrice, currentPrice, value }
+  
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("portfolios")
+}
+
+model Post {
+  id       String    @id @default(cuid())
+  content  String
+  images   String[]  // URLs to uploaded images
+  tickers  String[]  // Referenced tickers in the post
+  
+  // Engagement
+  likesCount    Int @default(0)
+  commentsCount Int @default(0)
+  
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  comments Comment[]
+  likes    Like[]
+  
+  @@map("posts")
+}
+
+model Comment {
+  id      String @id @default(cuid())
+  content String
+  
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  // Nested comments
+  parentId String?
+  parent   Comment? @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("comments")
+}
+
+model Like {
+  id String @id @default(cuid())
+  
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, postId])
+  @@map("likes")
+}
+
+model Follow {
+  id String @id @default(cuid())
+  
+  followerId String
+  follower   User   @relation("UserFollows", fields: [followerId], references: [id], onDelete: Cascade)
+  
+  followingId String
+  following   User   @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model Notification {
+  id      String           @id @default(cuid())
+  type    NotificationType
+  title   String
+  message String
+  data    Json?            // Additional notification data
+  read    Boolean          @default(false)
+  
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@map("notifications")
+}
+
+model MarketData {
+  id       String   @id @default(cuid())
+  ticker   String
+  price    Float
+  volume   Float
+  change   Float
+  changePercent Float
+  
+  // Technical indicators
+  sma20    Float?
+  sma50    Float?
+  sma200   Float?
+  rsi      Float?
+  macd     Float?
+  bb_upper Float?
+  bb_lower Float?
+  
+  timestamp DateTime @default(now())
+  
+  @@unique([ticker, timestamp])
+  @@map("market_data")
+}
+
+// Enums
+enum RiskProfile {
+  CONSERVATIVE
+  MODERATE
+  AGGRESSIVE
+}
+
+enum StrategyType {
+  LONG_TERM
+  SHORT_TERM
+  SWING
+  DAY_TRADE
+  SCALP
+}
+
+enum StrategyStatus {
+  ACTIVE
+  PAUSED
+  STOPPED
+  ARCHIVED
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum NotificationType {
+  ALERT_TRIGGERED
+  TRADE_EXECUTED
+  STRATEGY_UPDATE
+  SOCIAL_LIKE
+  SOCIAL_COMMENT
+  SOCIAL_FOLLOW
+  SYSTEM
+}
